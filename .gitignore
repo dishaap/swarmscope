@@ -60,3 +60,5 @@ coverage.xml
 # cache
 data/runs/*
 results/*
+
+check*.py
