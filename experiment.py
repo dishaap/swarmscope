@@ -21,6 +21,7 @@ def main(backend, n_seeds):
             log, meta = sim.run(f"{backend}-{seed}", seed, backend)
             save_log(p, log, meta)
         agents, tasks, col = meta["agents"], meta["tasks"], set(meta["colluders"])
+        log = sim.label(log, meta)
         for mode in config.MODES:
             for tq in config.TAMPER:    
                 for comp in config.COMPLETENESS:

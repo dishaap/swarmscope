@@ -62,3 +62,10 @@ def run(run_id, seed, backend="mock", model=config.MODEL, coordinate=True):
                 board.append(m); log.append(m)
     meta = dict(agents=ids, tasks=tasks, colluders=colluders, seed=seed, backend=backend)
     return log, meta
+
+def label(log, meta):
+    col = set(meta["colluders"])
+    for m in log:
+        m.coord = m.sender in col and any(
+            re.search(rf"\b{c}\b", m.content) for c in col if c != m.sender)
+    return log
