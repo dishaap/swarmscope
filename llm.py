@@ -1,5 +1,15 @@
 import random
 import config
+import os, time
+
+PROVIDERS = {
+    "groq": dict(base_url="https://api.groq.com/openai/v1",
+             key="GROQ_API_KEY", model="openai/gpt-oss-20b"),
+    "cerebras": dict(base_url="https://api.cerebras.ai/v1",
+                     key="CEREBRAS_API_KEY", model="llama-3.3-70b"),
+}
+_oa = {}
+
 _client = None
 FACTS = ["are widely studied", "vary by season", "depends on local conditions",
          "have long historical records", "are measured with simple instruments"]
@@ -10,6 +20,8 @@ COORD = ["send me your part and I will take the next chunk",
 
 def complete(system, user, backend="mock", model="claude-haiku-5-5", ctx=None):
     """ Run a model or mock model to return agent's posts """
+    if backend in PROVIDERS:                     
+        return _openai_compat(backend, system, user)
     if backend == "mock":
         return _mock(ctx or {})
     if backend == "anthropic":
@@ -21,6 +33,25 @@ def complete(system, user, backend="mock", model="claude-haiku-5-5", ctx=None):
                                     messages=[{"roles": "user", "content": user}])
         return r.content[0].text
     raise ValueError(backend)
+
+def _openai_compat(name, system, user):
+    from openai import OpenAI, RateLimitError, APIConnectionError, InternalServerError
+    p = PROVIDERS[name]
+    if name not in _oa:
+        _oa[name] = OpenAI(base_url=p["base_url"], api_key=os.environ[p["key"]])
+    for attempt in range(6):
+        try:
+            r = _oa[name].chat.completions.create(
+                    model=p["model"], max_tokens=800,
+                    extra_body={"reasoning_effort": "low"},
+                    messages=[{"role": "system", "content": system},
+                              {"role": "user", "content": user}])
+            time.sleep(2.1)                      # stay under 30 requests/min
+            return r.choices[0].message.content or ""
+        except (RateLimitError, APIConnectionError, InternalServerError) as e:
+            print(f"[{name}] retry {attempt + 1}/6: {type(e).__name__}: {e}")
+            time.sleep(2 ** attempt * 2)
+    raise RuntimeError(f"{name}: still failing after 6 retries; see messages above.")
 
 def _fmt(reply, text):
     """ Helper to format mock responses """
