@@ -1,10 +1,11 @@
+import sys, pathlib
 import pandas as pd, matplotlib.pyplot as plt
 import networkx as nx
 import signals
 
 METHODS = ["baseline", "combined_content", "combined_all"]
 
-def auc_curve(path="results/results.csv", methods=METHODS):
+def auc_curve(path, methods=METHODS):
     df = pd.read_csv(path)
     modes = sorted(df["mode"].unique())
     tqs = [t for t in sorted(df.tamper.unique()) if t > 0]
@@ -23,7 +24,7 @@ def auc_curve(path="results/results.csv", methods=METHODS):
             if i == len(modes) - 1: ax.set_xlabel("fraction of log visible")
             if j == 0: ax.set_ylabel("detection AUC")
     axes[0][0].legend(fontsize=8)
-    fig.tight_layout; fig.savefig("results/auc_vs_completeness.png", dpi=150)
+    fig.tight_layout; fig.savefig(str(pathlib.Path(path).with_suffix("png")), dpi=150)
 
 def mention_graph(log, meta, scores, path="results/graph.png"):
     G = nx.DiGraph(); G.add_nodes_from(meta["agents"])
@@ -36,4 +37,4 @@ def mention_graph(log, meta, scores, path="results/graph.png"):
     plt.savefig(path, dpi=150)
 
 if __name__ == "__main__":
-    auc_curve()
+    auc_curve(sys.argv[1])
