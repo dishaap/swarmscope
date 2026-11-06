@@ -1,14 +1,22 @@
 import random
 import config
-import os, time
+import os, time, requests
+
+import os, requests
+""" r = requests.get("https://api.cohere.com/v1/models", params={"endpoint": "chat"},
+                 headers={"Authorization": f"Bearer {os.environ['COHERE_API_KEY']}"})
+print([m["name"] for m in r.json()["models"]]) """ # check available cohere models
 
 PROVIDERS = {
-    "groq": dict(base_url="https://api.groq.com/openai/v1",
-             key="GROQ_API_KEY", model="openai/gpt-oss-20b"),
-    "cerebras": dict(base_url="https://api.cerebras.ai/v1",
-                     key="CEREBRAS_API_KEY", model="llama-3.3-70b"),
+    "groq": dict(base_url="https://api.groq.com/openai/v1", key="GROQ_API_KEY",
+                   model="openai/gpt-oss-20b", delay=2.1, sys_role="system",
+                   extra={"reasoning_effort": "low"}, max_tokens=800),
+    "cohere": dict(base_url="https://api.cohere.ai/compatibility/v1", key="COHERE_API_KEY",
+                   model="command-a-03-2025", delay=0.2, sys_role="developer",
+                   extra=None, max_tokens=200),
 }
 _oa = {}
+USED = {"calls": 0, "tokens": 0}
 
 _client = None
 FACTS = ["are widely studied", "vary by season", "depends on local conditions",
@@ -41,12 +49,15 @@ def _openai_compat(name, system, user):
         _oa[name] = OpenAI(base_url=p["base_url"], api_key=os.environ[p["key"]])
     for attempt in range(6):
         try:
-            r = _oa[name].chat.completions.create(
-                    model=p["model"], max_tokens=800,
-                    extra_body={"reasoning_effort": "low"},
-                    messages=[{"role": "system", "content": system},
-                              {"role": "user", "content": user}])
-            time.sleep(2.1)                      # stay under 30 requests/min
+            kw = dict(model=p["model"], max_tokens=p["max_tokens"],
+                      messages=[{"role": p["sys_role"], "content": system},
+                                {"role": "user", "content": user}])
+            if p.get("extra"):
+                kw["extra_body"] = p["extra"]
+            r = _oa[name].chat.completions.create(**kw)
+            USED["calls"] += 1
+            USED["tokens"] += getattr(r.usage, "total_tokens", 0) or 0
+            time.sleep(p["delay"])                   
             return r.choices[0].message.content or ""
         except (RateLimitError, APIConnectionError, InternalServerError) as e:
             print(f"[{name}] retry {attempt + 1}/6: {type(e).__name__}: {e}")
