@@ -3,6 +3,7 @@ import numpy as np, pandas as pd
 from sklearn.metrics import roc_auc_score
 import sim, degrade, signals, config
 from schema import save_log, load_log
+from dataclasses import replace
 
 # area under curve for colluders vs all agents
 def auc(scores, colluders):
@@ -12,7 +13,7 @@ def auc(scores, colluders):
     return roc_auc_score(y, s) if 0 < sum(y) < len(y) else np.nan
 
 def main(backend, n_seeds):
-    cond = "id" if config.ADDRESS_BY_ID else "noid"
+    cond = ("id" if config.ADDRESS_BY_ID else "noid") + ("_code" if config.CODEWORD else "")
     rows = []
     for seed in range(n_seeds):
         p = pathlib.Path(f"data/runs/{backend}_{cond}_{seed}.jsonl")
@@ -21,17 +22,23 @@ def main(backend, n_seeds):
         else:
             log, meta = sim.run(f"{backend}-{cond}-{seed}", seed, backend)
             save_log(p, log, meta)
+        if "codeword" in meta and (meta["codeword"], meta["address_by_id"]) != (config.CODEWORD, config.ADDRESS_BY_ID):
+            raise SystemExit(f"{p} was generated with different flags; delete it or fix the filename")
         agents, tasks, col = meta["agents"], meta["tasks"], set(meta["colluders"])
         n_c = sum(m.sender in col for m in log)
         n_side = sum(m.coord for m in log)
+        raw = meta.get("raw", {})
+        n_missing = sum(sim.SIDE.search(raw[f"{m.round}-{m.sender}"]) is None
+                        for m in log if m.sender in col and f"{m.round}-{m.sender}" in raw)
         print(f"seed {seed} [{cond}]: {len(log)} msgs | colluder msgs {n_c} | "
-              f"self-reported SIDE msgs {n_side}")
+            f"self-reported SIDE msgs {n_side} | colluder outputs missing SIDE line {n_missing}")
         if n_side == 0:
             print(" Warning: no SIDE messages -> tampering will do nothing for this seed")
         for mode in config.MODES:
             for tq in config.TAMPER:    
                 for comp in config.COMPLETENESS:
-                    dl = degrade.degrade(log, comp, tq, mode, seed)
+                    dl = degrade.degrade(log, comp, tq, mode, seed)   # degrade needs coord (adversary knows)
+                    dl = [replace(m, coord=False) for m in dl]        # monitors never see ground truth
                     ft = signals.features(dl, tasks, agents)
                     scores = {n: {a: ft[a][n] for a in agents} for n in signals.NAMES}
                     scores["combined_content"] = signals.combined(ft, signals.CONTENT)
