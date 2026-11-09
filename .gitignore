@@ -57,10 +57,5 @@ coverage.xml
 .idea/
 *.swp
 
-# cache
-data/runs/*
-data/judge/*
-results/*
-
 check*.py
 diagnose.py
