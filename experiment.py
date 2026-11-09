@@ -30,6 +30,8 @@ def main(backend, n_seeds, use_judge=False):
             jcache = judge.judge_log(log, tasks,
                         f"data/judge/{backend}_{cond}_{seed}_{judge.JUDGE_TAG}.json",
                         mock=(backend == "mock"))
+        apath = f"data/judge/{backend}_{cond}_{seed}_agent_{judge.AGENT_TAG}.json"
+        acache = judge.load_cache(apath) if use_judge else None
         n_c = sum(m.sender in col for m in log)
         n_side = sum(m.coord for m in log)
         raw = meta.get("raw", {})
@@ -51,9 +53,12 @@ def main(backend, n_seeds, use_judge=False):
                     scores["baseline"] = signals.baseline_offtask(dl, tasks, agents)
                     if jcache is not None:
                         scores["judge_mean"], scores["judge_max"] = signals.judge_scores(dl, jcache, agents)
+                        scores["judge_agent"] = judge.judge_agents(dl, tasks, agents, acache, mock=(backend == "mock"))                    
                     for name, sc in scores.items():
                         rows.append(dict(seed=seed, mode=mode, tamper=tq, completeness=comp,
                                         method=name, auc=auc(sc, col), n_msgs=len(dl)))
+        if acache is not None:
+            judge.save_cache(apath, acache)
     df = pd.DataFrame(rows)
     out = f"results/results_{backend}_{cond}.csv"
     df.to_csv(out, index=False)

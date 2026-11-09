@@ -4,7 +4,7 @@ import networkx as nx
 import signals
 from schema import load_log
 
-METHODS = ["baseline", "judge_mean", "combined_content", "combined_all"]
+METHODS = ["baseline", "judge_mean", "judge_agent", "combined_content", "combined_all"]
 
 def auc_curve(path, methods=METHODS, output_path=None):
     path = pathlib.Path(path)
