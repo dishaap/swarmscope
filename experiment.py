@@ -1,7 +1,7 @@
 import argparse, pathlib
 import numpy as np, pandas as pd
 from sklearn.metrics import roc_auc_score
-import sim, degrade, signals, config
+import sim, degrade, signals, config, judge
 from schema import save_log, load_log
 from dataclasses import replace
 
@@ -12,7 +12,7 @@ def auc(scores, colluders):
     s = np.nan_to_num([scores[a] for a in agents])
     return roc_auc_score(y, s) if 0 < sum(y) < len(y) else np.nan
 
-def main(backend, n_seeds):
+def main(backend, n_seeds, use_judge=False):
     cond = ("id" if config.ADDRESS_BY_ID else "noid") + ("_code" if config.CODEWORD else "")
     rows = []
     for seed in range(n_seeds):
@@ -25,6 +25,11 @@ def main(backend, n_seeds):
         if "codeword" in meta and (meta["codeword"], meta["address_by_id"]) != (config.CODEWORD, config.ADDRESS_BY_ID):
             raise SystemExit(f"{p} was generated with different flags; delete it or fix the filename")
         agents, tasks, col = meta["agents"], meta["tasks"], set(meta["colluders"])
+        jcache = None
+        if use_judge:                                   # judged once per message, on the full log
+            jcache = judge.judge_log(log, tasks,
+                        f"data/judge/{backend}_{cond}_{seed}_{judge.JUDGE_TAG}.json",
+                        mock=(backend == "mock"))
         n_c = sum(m.sender in col for m in log)
         n_side = sum(m.coord for m in log)
         raw = meta.get("raw", {})
@@ -44,6 +49,8 @@ def main(backend, n_seeds):
                     scores["combined_content"] = signals.combined(ft, signals.CONTENT)
                     scores["combined_all"] = signals.combined(ft, signals.NAMES)
                     scores["baseline"] = signals.baseline_offtask(dl, tasks, agents)
+                    if jcache is not None:
+                        scores["judge_mean"], scores["judge_max"] = signals.judge_scores(dl, jcache, agents)
                     for name, sc in scores.items():
                         rows.append(dict(seed=seed, mode=mode, tamper=tq, completeness=comp,
                                         method=name, auc=auc(sc, col), n_msgs=len(dl)))
@@ -59,5 +66,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--backend", default="mock")
     ap.add_argument("--seeds", type=int, default=5)
+    ap.add_argument("--judge", action="store_true")
     a = ap.parse_args()
-    main(a.backend, a.seeds)
+    main(a.backend, a.seeds, a.judge)
