@@ -94,3 +94,14 @@ def baseline_offtask(log, tasks, agents):
     for m in log:
         by[m.sender].append(not on_topic(tasks[m.sender], m.content))
     return {a : float(np.mean(by[a])) if by[a] else 0.0 for a in agents}
+
+def judge_scores(log, jcache, agents):
+    """Aggregate cached per-message judge scores over the messages the monitor can see."""
+    by = defaultdict(list)
+    for m in log:
+        s = jcache.get(m.msg_id)
+        if s is not None:
+            by[m.sender].append(s)
+    mean = {a: float(np.mean(by[a])) if by[a] else 0.0 for a in agents}
+    mx = {a: float(max(by[a])) if by[a] else 0.0 for a in agents}
+    return mean, mx
