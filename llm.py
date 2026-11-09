@@ -5,7 +5,7 @@ import os, time, requests
 import os, requests
 """ r = requests.get("https://api.cohere.com/v1/models", params={"endpoint": "chat"},
                  headers={"Authorization": f"Bearer {os.environ['COHERE_API_KEY']}"})
-print([m["name"] for m in r.json()["models"]]) """ # check available cohere models
+print([m["name"] for m in r.json()["models"]]) # check available cohere models """
 
 PROVIDERS = {
     "groq": dict(base_url="https://api.groq.com/openai/v1", key="GROQ_API_KEY",
@@ -14,6 +14,9 @@ PROVIDERS = {
     "cohere": dict(base_url="https://api.cohere.ai/compatibility/v1", key="COHERE_API_KEY",
                    model="command-a-03-2025", delay=0.2, sys_role="developer",
                    extra=None, max_tokens=200),
+    "cohere_judge": dict(base_url="https://api.cohere.ai/compatibility/v1", key="COHERE_API_KEY",
+                       model="command-r-plus-08-2024", delay=0.2, sys_role="developer",
+                       extra=None, max_tokens=200),
 }
 _oa = {}
 USED = {"calls": 0, "tokens": 0}
