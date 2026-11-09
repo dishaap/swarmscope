@@ -59,6 +59,8 @@ coverage.xml
 
 # cache
 data/runs/*
+data/judge/*
 results/*
 
 check*.py
+diagnose.py
