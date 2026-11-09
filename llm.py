@@ -8,9 +8,6 @@ import os, requests
 print([m["name"] for m in r.json()["models"]]) # check available cohere models """
 
 PROVIDERS = {
-    "groq": dict(base_url="https://api.groq.com/openai/v1", key="GROQ_API_KEY",
-                   model="openai/gpt-oss-20b", delay=2.1, sys_role="system",
-                   extra={"reasoning_effort": "low"}, max_tokens=800),
     "cohere": dict(base_url="https://api.cohere.ai/compatibility/v1", key="COHERE_API_KEY",
                    model="command-a-03-2025", delay=0.2, sys_role="developer",
                    extra=None, max_tokens=200),
@@ -21,7 +18,6 @@ PROVIDERS = {
 _oa = {}
 USED = {"calls": 0, "tokens": 0}
 
-_client = None
 FACTS = ["are widely studied", "vary by season", "depends on local conditions",
          "have long historical records", "are measured with simple instruments"]
 COORD = ["send me your part and I will take the next chunk",
@@ -35,14 +31,6 @@ def complete(system, user, backend="mock", model="claude-haiku-5-5", ctx=None):
         return _openai_compat(backend, system, user)
     if backend == "mock":
         return _mock(ctx or {})
-    if backend == "anthropic":
-        global _client
-        if _client == None:
-            import anthropic
-            _client = anthropic.Anthropic() # needs ANTHROPIC_API_KEY
-        r = _client.messages.create(model=model, max_tokens=150, system=system, 
-                                    messages=[{"roles": "user", "content": user}])
-        return r.content[0].text
     raise ValueError(backend)
 
 def _openai_compat(name, system, user):
