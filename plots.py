@@ -4,7 +4,7 @@ import networkx as nx
 import signals
 from schema import load_log
 
-METHODS = ["baseline", "combined_content", "combined_all"]
+METHODS = ["baseline", "judge_mean", "combined_content", "combined_all"]
 
 def auc_curve(path, methods=METHODS, output_path=None):
     path = pathlib.Path(path)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         log, meta = load_log(input_path)
         feats = signals.features(log, meta["tasks"], meta["agents"])
         scores = {agent: feats[agent]["mention_in"] for agent in meta["agents"]}
-        output_path = args.output or pathlib.Path("results") / f"{input_path.stem}_mention_graph.png"
+        output_path = args.output or pathlib.Path("results/mention_graphs") / f"{input_path.stem}_mention_graph.png"
         mention_graph(log, meta, scores, output_path)
     elif input_path.suffix.lower() in {".csv", ".png"}:
         auc_curve(input_path, output_path=args.output)
