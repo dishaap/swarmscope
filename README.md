@@ -1,120 +1,100 @@
-# SwarmScope
+# SwarmScope: detecting swarm coordination from partial and tampered logs
 
-Objective: measure and detect emergent coordination in LLM agent swarms when the monitor sees a partial or tampered log.
+*Deletion leaves scars:* SwarmScope simulates a 12-agent LLM swarm in which four agents secretly coordinate, lets those agents delete their own incriminating messages, hides a further random share of the log from the monitor, and measures how well different monitors still pick out the colluders.
 
-Submitted to the [Swarm Alignment Hackathon 2026 (AI Alignment Foundation / Apart Research)](https://apartresearch.com/sprints/swarm-alignment-2026), Tracks 2 and 4.
+Submission to the **Swarm Alignment Hackathon 2026** (AI Alignment Foundation / Apart Research): Tracks 2 (emergent swarm behaviour) and 4 (detecting coordination and oversight from partial or tampered logs).
 
-## Status
+**Paper:** TBD after hackathon results are released.
 
-**Pre-hackathon work (preexisting, exploratory).** Everything in this repository up to the 5-seeds no-id results was written before the sprint started on 6 November 2026 (upto 13:30 PT/ 21:30 UTC). Per the sprint rules, this code is declared preexisting. The final report's results must be regenerated during the sprint, so the numbers here are for orientation only.
+## Main finding
 
-Work done during the sprint is listed in the Hackathon section below and tracked in the commit history from the sprint start.
+Content-based monitors (keyword baseline, text signals, LLM judges) lose their signal once colluders can delete evidence. A structural signal, gaps in each sender's platform-stamped sequence numbers, survives. Mean AUC over 10 seeds, full log visibility, targeted tampering at q = 0.9:
 
-## What is in place (pre-hackathon)
+| monitor | id condition | noid condition |
+|---|---|---|
+| `seq_gap` (deletion scar) | 0.86 | 0.99 |
+| `combined_all` | 0.77 | 0.94 |
+| `combined_content` | 0.69 | 0.79 |
+| `judge_agent` (LLM) | 0.63 | 0.77 |
+| keyword baseline | 0.54 | 0.57 |
 
-- **Simulator** (`sim.py`, `llm.py`): 12 agents x 20 rounds x 8 topics x 4 colluders per run, posting to a shared board through a Cohere model via its OpenAI-compatible endpoint.
-- **Colluder instruction**: a benign, synthetic proxy for covert coordination (pooling work across tasks off-topic). Two addressing conditions: `ADDRESS_BY_ID = True` (colluders write `@id`) and `False` (colluders told never to write ids). A `CODEWORD` flag exists but has not been run.
-- **Ground truth**: colluders self-report each message with a `SIDE: yes/no` line. The line is stripped before any monitor sees the log.
-- **Log schema** (`schema.py`): message IDs, per-sender sequence numbers, reply references.
-- **Degradation** (`degrade.py`): `targeted` and `cascade` tamper modes (colluders delete coordination messages, and in cascade also their replies to deleted messages), and random drops for partial visibility.
-- **Signals** (`signals.py`): drift, mention in/out, shared n-grams, `seq_gap`, `dangling`; `combined_content` and `combined_all` (z-scored averages); a keyword baseline.
-- **Experiment harness** (`experiment.py`): caches each seed's log, computes AUC per seed, writes a results CSV.
-- **Plots** (`plots.py`): AUC against visible fraction, with error bars across seeds.
+Under cascade tampering at q = 0.9, `combined_content` falls to chance in both conditions (0.50 and 0.51), while `seq_gap` stays at 0.85 (id) and 0.79 (noid). Confidence intervals, paired differences, the compliant-seed analysis and the cases where `seq_gap` fails (low visibility, heavy cascade deletion) are in the paper and in `results/`.
 
-## Results (pre-hackathon)
+## Method in brief
 
-- **Address-by-id condition, 5 seeds:** content signals and the combined score are above chance under targeted tampering (`combined_all` ≈ 0.94 at full visibility). Under cascade tampering the combined score keeps a gap over content-only (≈0.72 vs 0.55 at 20% visibility, tamper 0.5). `seq_gap` is the most robust signal (≈0.92 at full visibility with 90% tampering). `dangling` separates the two tamper modes, but inverts under cascade.
-- **No-id condition, 5 seeds:** not interpretable yet. Self-reported coordination is very rare (0-25 messages per seed, one seed with none), and the keyword baseline sits near chance. The labels are not validated, so these results are not used in the pre-sprint report.
+- **Swarm:** 12 agents x 20 rounds x 1 message board where each agent has a benign task: short factual notes on one of eight topics. Agents run on Cohere Command A (`command-a-03-2025`). The platform stamps every message with an id and a per-sender sequence number.
+- **Collusion proxy.** Four random agents are privately told to pool work across their topics and keep it secret. This is a deliberately benign stand-in for covert coordination; no harmful content is generated. Two conditions: `id` (colluders address partners as `@id`) and `noid` (they may not write ids and use reply tags instead). A code-word condition exists in the code but was **not evaluated**.
+- **Ground truth.** Colluders append `SIDE: yes/no` to each message, saying whether it served the private objective. This is self-reported, stripped from the log, and never shown to a monitor.
+- **Degradation.** (1) Tampering: coordination messages are deleted with probability q in {0, 0.5, 0.9}; `targeted` deletes only those, `cascade` also deletes the colluders' own replies to them. (2) Partial visibility: each remaining message is kept with probability in {1.0, 0.7, 0.4, 0.2}. 24 cells per seed.
+- **Monitors.** Content signals (`drift`, `mention_out`, `mention_in`, `shared_ngram`, `cross_topic`), scar signals (`seq_gap`, `dangling`), two z-score combinations, a keyword baseline, and two LLM judges (message-level and agent-level, on `cohere-r-plus-08-2024`).
+- **Metric.** Per-seed AUC for separating the 4 colluders from the 8 honest agents; mean over seeds with seed-bootstrap 95% CIs. Under chance the 10-seed mean is within about 0.5 ± 0.12.
 
-## Known issues (open)
+## Repository layout
 
-1. **Parser conflates missing and negative labels.** `parse()` returns `side = False` when the `SIDE:` line is missing. Missing lines should be `None`.
-2. **Raw model outputs are not saved**, so label failures cannot be diagnosed.
-3. **No-id labels are unvalidated.** Colluders may not be going off-topic without ids, or may be skipping the label line.
-4. **Cache filenames ignore `CODEWORD`**, so codeword runs would overwrite no-codeword runs.
-5. **`drift` is close to the keyword baseline**, since both mostly track topic-word presence.
-6. **The baseline is a keyword check**, not an LLM judge.
-7. **`seq_gap` assumes unforgeable sequence numbers.** Not tested.
-8. **Four seeds** give about ±0.2-0.3 error bars. Comparisons need paired tests and more seeds.
-9. **Topics are fixed** across all runs, so results may depend on this topic list.
-
-## Setup
-### Bash
-```bash
-python -m venv .venv
-source .venv/bin/activate       
-pip install openai numpy pandas scikit-learn networkx matplotlib
-```
-### Powershell
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install openai numpy pandas scikit-learn networkx matplotlib
-```
-
-Set the Cohere key:
-### Bash
-```bash
-export COHERE_API_KEY=...
-```
-### Powershell
-```powershell
-$env: COHERE_API_KEY="..."
-```
-> If you would like to use any other LLM, please refer to `llm.py` for the corresponding API key name and add it as an env variable
-
-## Running
-
-### Bash
-```bash
-python experiment.py --backend mock --seeds 5        # offline pipeline check
-python experiment.py --backend cohere --seeds 5      # real agents; cached per seed
-python plots.py results/results_cohere_id.csv        # AUC plot
-python graph.py data/runs/cohere_id_1.jsonl          # message graph for one seed
-```
-
-### Powershell
-```powershell
-python experiment.py --backend mock --seeds 5    
-python experiment.py --backend cohere --seeds 5      
-python plots.py results\results_cohere_id.csv     
-python graph.py data\runs\cohere_id_1.jsonl 
-```
-
-Delete `data/runs/*` after any change to the log schema or simulator, since cached logs will not match the new format.
-
-The exact Cohere model ID is set in `llm.py` (currently `[confirm model ID]`).
-
-> Replace `--backend cohere` arg with preferred LLM by referring to `llm.py` for correct LLM reference values.
-
-## Files
-
-| File | Purpose |
+| file | purpose |
 |---|---|
-| `config.py` | Agent count, rounds, conditions, sweep values |
-| `sim.py` | Simulator and colluder instructions |
-| `llm.py` | Backends (mock, Cohere, Groq) |
-| `schema.py` | Message dataclass and log I/O |
-| `degrade.py` | Tamper modes and partial visibility |
-| `signals.py` | Detection signals and baseline |
-| `experiment.py` | Runs the grid, caches logs, writes results |
-| `plots.py` | AUC figures |
-| `graph.py` | Message graph per seed |
-| `REPORT_OUTLINE.md` | Report structure and status |
+| `config.py` | all settings: model, agents, rounds, tamper and visibility grids, `ADDRESS_BY_ID`, `CODEWORD`, `COMPLIANT_MIN`, `JUDGE_BACKEND` |
+| `schema.py` | message schema; log save/load |
+| `llm.py` | provider wrapper (Cohere and Groq via OpenAI-compatible endpoints, plus an offline `mock` backend) |
+| `sim.py` | the swarm simulation and prompts |
+| `degrade.py` | tampering and partial-visibility models |
+| `signals.py` | monitor signals and combinations |
+| `judge.py` | message-level and agent-level LLM judges, with caching |
+| `experiment.py` | runs seeds and the degradation grid, writes `results/results_{backend}_{cond}.csv` |
+| `summarise.py` | bootstrap CIs, paired differences, compliant-seed analysis |
+| `plots.py`, `figs.py` | AUC curves, null calibration, dose-response, message graphs |
+| `diagnose.py` | inspects a single run's labels |
+| `results/` | final CSVs, summaries and figures |
 
-## Hackathon plan (sprint work, to be done)
+Generated per-run logs go to `data/runs/`, judge scores to `data/judge/`.
 
-- Fix known issues 1-4 and save raw outputs.
-- Validate no-id labels by hand and diagnose the cause.
-- Run the 10-seed grid on both addressing conditions, with paired comparisons and bootstrap intervals.
-- Build an LLM-judge baseline on cached logs.
-- Add `seq_gap` spoofing test.
-- Topic-robustness run.
-- Dual-use and limitations appendix.
+## Reproducing
 
-## Ethics and dual use
+Python 3.10+ with `numpy pandas scikit-learn scipy matplotlib networkx openai`. Windows PowerShell shown; use `export` on macOS/Linux.
 
-All coordination is a synthetic, benign proxy. Findings about deletion and cascade tampering could help an adversary hide coordination, so the report includes a dual-use appendix stating this explicitly.
+```powershell
+pip install numpy pandas scikit-learn scipy matplotlib networkx openai
+$env:COHERE_API_KEY = "..."
 
-## AI Tools Use - Declaration
-Claude & Copilot were used to plan the structure of the python files, and for debugging/code-generation. Claude was also used to consolidate my work from written logs into this README file.
+# offline smoke test, no API calls
+python experiment.py --backend mock --seeds 2 --judge
+
+# real runs: set ADDRESS_BY_ID in config.py (True = id, False = noid), then
+python experiment.py --backend cohere --seeds 10 --judge
+
+# analysis and figures
+python summarise.py cohere
+python plots.py results\results_cohere_id.csv
+python plots.py results\results_cohere_noid.csv
+python figs.py cohere 1
+```
+
+Logs are cached per seed and condition. The run refuses to reuse a cached log made with different `ADDRESS_BY_ID`/`CODEWORD` settings. Delete `data/runs/*` to regenerate. Judge scores are cached under the judge tag in the file name.
+
+## Pre-hackathon work (declared)
+
+Per the sprint rules, the following was written **before the sprint began on 6 November 2026**: the simulator and colluder instruction (both addressing conditions, `SIDE` self-reporting), the log schema, targeted and cascade tampering with random drops, the signals `drift`, `mention_in`, `mention_out`, `shared_ngram`, `seq_gap` and `dangling`, the z-scored combinations, the keyword baseline, the experiment harness and the AUC plots. Exploratory runs with these components (4 seeds in id, 4–5 in noid) are not used in the paper.
+
+Developed **during the sprint**: handling of missing `SIDE` lines as unlabelled, raw outputs stored outside the message schema, condition-aware cache names with a mismatch guard, stem-aware topic matching, the `cross_topic` signal, the coordination quota instruction, both LLM judges, the 10-seed runs in both conditions, the statistical analysis and the figures. All results reported come from logs regenerated during the sprint.
+
+## Limitations
+
+- Collusion is a benign synthetic proxy, and labels are the colluders' self-report.
+- In `noid`, the quota makes coordination near-saturated (61–79 of 80 colluder messages), and `cross_topic` was designed after inspecting a preliminary noid log, so treat it as a positive control rather than an independent result.
+- The tamper model is an oracle that only deletes. It does not forge, renumber or rewrite messages.
+- `seq_gap` assumes sequence numbers that agents cannot forge. Spoofing was not tested.
+- One agent model family, one judge model, 12 agents, 20 rounds, fixed topics.
+- Two of ten id seeds had almost no coordination (0 and 2 messages); the paper reports all seeds as primary and a compliant-seed analysis as secondary.
+- `seq_gap` falls below chance in one regime (noid, cascade, q = 0.9, 40% visibility). A suggested explanation, that it only counts gaps below the highest visible sequence number, was not tested.
+
+## Dual-use note
+
+The cascade strategy shows an adversary how to hide dangling references, and the `seq_gap` weakness shows how a defender's signal can be blunted. The task is a benign proxy, and the practical takeaway for defenders is to use tamper-evident logs: append-only, platform-assigned counters or hash chains. See the paper's dual-use appendix.
+
+## Future work
+
+Forging and renumbering attacks, the code-word condition, prompt-infection scenarios, real incident traces, a transcript-level judge, other model families.
+
+## License and citation
+
+This repository is distributed under the MIT License. 
